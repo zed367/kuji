@@ -542,3 +542,105 @@ body::after {
   .status-ring { width: 42px; height: 42px; }
   .info-row { min-height: 27px; }
 }
+
+/* 모바일에서는 태블릿용 고정 캔버스를 해제하고, 한 열로 자연스럽게 이어진다. */
+@media (max-width: 760px) {
+  body {
+    min-width: 0;
+    overflow-x: hidden;
+    overflow-y: auto;
+  }
+
+  #app {
+    height: auto;
+    min-height: 100svh;
+    padding: 12px;
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  .main-col,
+  .side-col {
+    flex: 0 0 auto;
+    width: 100%;
+  }
+
+  .main-col { gap: 9px; }
+  .command-header { height: 25px; }
+  .wordmark { font-size: 9px; }
+  .session-state { font-size: 8px; }
+
+  .top-banner {
+    height: 126px;
+    border-radius: 15px 15px 6px 6px;
+  }
+
+  .banner-copy {
+    top: 25px;
+    left: 20px;
+  }
+
+  .banner-copy strong { font-size: 23px; }
+  .banner-orbit { right: -9%; }
+
+  .stand-header { min-height: 43px; }
+  .stand-header h2 { font-size: 14px; }
+  .reload-btn { height: 29px; padding: 0 8px; font-size: 8px; }
+
+  .stand-outer {
+    min-height: 440px;
+    flex: 0 0 440px;
+    padding: 23px 10px 13px;
+  }
+
+  .shelf-row { gap: 14px; }
+  .grid-label { font-size: 7px; }
+
+  .side-col { gap: 10px; }
+  .draw-status { min-height: 82px; }
+  .tabs { gap: 5px; }
+  .tab { min-height: 57px; }
+  .info-panel { padding: 13px 12px 9px; }
+  .info-name { margin-left: 4px; }
+  .info-stock { margin-right: 5px; font-size: 9px; }
+  .side-foot { margin: 1px 0 8px; }
+
+  .overlay {
+    min-height: 100svh;
+    justify-content: flex-start;
+    padding: 66px 16px 28px;
+    overflow-x: hidden;
+    overflow-y: auto;
+  }
+
+  .overlay-title {
+    width: 100%;
+    margin-bottom: 14px;
+    font-size: 12px;
+    text-align: center;
+  }
+
+  .cancel-unbox-btn,
+  .reveal-all-btn {
+    top: 13px;
+    padding: 8px 10px;
+    font-size: 10px;
+  }
+
+  .cancel-unbox-btn { left: 12px; }
+  .reveal-all-btn { right: 12px; }
+
+  .unbox-pack { width: 158px; }
+  .unbox-pack-top { height: 45px; }
+  .unbox-pack-bottom { height: 307px; }
+  .perf-track { height: 30px; }
+
+  .reveal-tray {
+    gap: 14px 10px;
+    margin-top: 14px;
+    padding-bottom: 10px;
+  }
+
+  .overlay-actions { margin-top: 15px; }
+  .result-summary { margin-top: 12px; padding-bottom: 12px; }
+}
