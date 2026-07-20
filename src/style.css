@@ -311,7 +311,20 @@ body::after {
   background-size: contain;
   cursor: pointer;
   filter: drop-shadow(0 10px 6px rgba(0, 0, 0, 0.52));
-  transition: filter 0.2s ease;
+  transition: filter 0.2s ease, opacity 0.22s ease;
+}
+
+.pack::before {
+  position: absolute;
+  z-index: 1;
+  inset: 6% 2%;
+  content: '';
+  opacity: 0;
+  border: 1px solid rgba(210, 231, 255, 0.3);
+  border-radius: 3px;
+  background: repeating-linear-gradient(135deg, rgba(5, 12, 24, 0.4) 0 3px, rgba(5, 12, 24, 0.72) 3px 7px);
+  pointer-events: none;
+  transition: opacity 0.22s ease;
 }
 
 .pack::after {
@@ -329,6 +342,17 @@ body::after {
 
 .pack:hover { filter: drop-shadow(0 0 7px rgba(114, 228, 255, 0.65)) drop-shadow(0 10px 6px rgba(0, 0, 0, 0.5)); }
 .pack:hover::after { opacity: 1; }
+
+.pack.is-dimmed {
+  cursor: default;
+  opacity: 0.3;
+  filter: grayscale(1) brightness(0.58) drop-shadow(0 6px 4px rgba(0, 0, 0, 0.35));
+}
+
+.pack.is-dimmed::before { opacity: 1; }
+.pack.is-dimmed::after { opacity: 0; }
+.pack.is-dimmed:hover { filter: grayscale(1) brightness(0.58) drop-shadow(0 6px 4px rgba(0, 0, 0, 0.35)); }
+.pack.is-dimmed:hover::after { opacity: 0; }
 
 .draw-status {
   min-height: 90px;
@@ -521,6 +545,12 @@ body::after {
 .card-glow { position: absolute; z-index: -1; inset: -34%; border-radius: 50%; filter: blur(14px); opacity: 0; pointer-events: none; transition: opacity 0.35s ease; }
 .card-glow.is-on { opacity: 0.75; animation: card-glow-pulse 2.4s ease-in-out infinite; }
 @keyframes card-glow-pulse { 0%, 100% { opacity: 0.5; transform: scale(0.85); } 50% { opacity: 0.9; transform: scale(1.15); } }
+
+/* 희귀 등급(1등/2등/LAST) 전용 강화 글로우 - 리빌 순간 한 번 확 터졌다(burst) 가라앉은 뒤,
+   더 크고 밝은 진폭으로 펄스가 이어진다. 3등/4등은 이 클래스가 붙지 않아 리빌 시 무발광 유지 */
+.card-glow.is-rare { inset: -48%; opacity: 0.95; animation: card-glow-burst 0.6s ease-out, card-glow-pulse-strong 2s ease-in-out 0.6s infinite; }
+@keyframes card-glow-burst { 0% { opacity: 0; transform: scale(0.4); } 45% { opacity: 1; transform: scale(1.55); } 100% { opacity: 0.9; transform: scale(1); } }
+@keyframes card-glow-pulse-strong { 0%, 100% { opacity: 0.65; transform: scale(0.92); } 50% { opacity: 1; transform: scale(1.35); } }
 
 .card-flip { position: relative; width: 100%; height: 100%; transform-style: preserve-3d; }
 .card-face { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 10px; border-radius: 8px; backface-visibility: hidden; text-align: center; }

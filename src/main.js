@@ -44,6 +44,26 @@ function createBox() {
 
 let box = createBox()
 let selectedCount = 1
+let nextPackId = 0
+let pendingPackId = null
+let standPacks = createNewPacks()
+
+function createNewPacks() {
+  return Array.from({ length: STAND_COLS * STAND_ROWS }, () => ({
+    id: nextPackId++,
+    img: PACK_IMAGES[Math.floor(Math.random() * PACK_IMAGES.length)],
+    state: 'available',
+  }))
+}
+
+function shufflePacks(packs) {
+  const shuffled = [...packs]
+  for (let i = shuffled.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(Math.random() * (i + 1))
+    ;[shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]]
+  }
+  return shuffled
+}
 
 const app = document.querySelector('#app')
 
@@ -145,18 +165,37 @@ function renderStand({ animateIn = false } = {}) {
     const row = document.createElement('div')
     row.className = 'shelf-row'
     for (let c = 0; c < STAND_COLS; c += 1) {
+      const packData = standPacks[r * STAND_COLS + c]
       const pack = document.createElement('div')
-      pack.className = 'pack'
-      const img = PACK_IMAGES[Math.floor(Math.random() * PACK_IMAGES.length)]
-      pack.dataset.img = img
-      pack.style.setProperty('--pack-img', `url('${img}')`)
+      pack.className = `pack${packData.state !== 'available' ? ' is-dimmed' : ''}${packData.state === 'pending' ? ' is-pending' : ''}`
+      pack.dataset.packId = String(packData.id)
+      pack.dataset.img = packData.img
+      pack.style.setProperty('--pack-img', `url('${packData.img}')`)
       row.appendChild(pack)
     }
     standEl.appendChild(row)
   }
   if (animateIn) {
-    animate('.pack', { opacity: [0, 1], y: [10, 0] }, { duration: 0.35, delay: stagger(0.015) })
+    const availablePacks = Array.from(standEl.querySelectorAll('.pack:not(.is-dimmed)'))
+    const dimmedPacks = Array.from(standEl.querySelectorAll('.pack.is-dimmed'))
+    if (availablePacks.length) {
+      animate(availablePacks, { opacity: [0, 1], y: [10, 0] }, { duration: 0.35, delay: stagger(0.015) })
+    }
+    if (dimmedPacks.length) {
+      animate(dimmedPacks, { opacity: [0, 0.3], y: [10, 0] }, { duration: 0.35, delay: stagger(0.015) })
+    }
   }
+}
+
+function updateReloadButton() {
+  const allPacksDimmed = standPacks.every((pack) => pack.state === 'dimmed')
+  reloadBtn.innerHTML = allPacksDimmed
+    ? '<span>+</span> NEW PACKS'
+    : '<span>↻</span> PACK SHUFFLE'
+}
+
+function findStandPack(packId) {
+  return standPacks.find((pack) => pack.id === packId)
 }
 
 window.addEventListener('resize', () => {
@@ -188,10 +227,15 @@ tabsEl.addEventListener('click', (e) => {
   selectedCount = Number(tab.dataset.n)
 })
 
-// 리로드 버튼: 실제 재고·확률에는 영향 없이, 매대만 새로 채워지는 것처럼 보이는 연출 전용 기능
+// 선택한 팩은 딤 상태를 유지한다. 전부 소진된 경우에만 새 팩으로 전체 보충하고,
+// 그 전에는 팩 객체를 섞어 딤 수를 유지한 채 위치만 바꾼다.
 reloadBtn.addEventListener('click', () => {
+  if (pendingPackId !== null) return
+  const allPacksDimmed = standPacks.every((pack) => pack.state === 'dimmed')
+  standPacks = allPacksDimmed ? createNewPacks() : shufflePacks(standPacks)
   fitStandSize()
   renderStand({ animateIn: true })
+  updateReloadButton()
 })
 
 standEl.addEventListener('click', (e) => {
@@ -201,16 +245,40 @@ standEl.addEventListener('click', (e) => {
 })
 
 async function selectPack(packEl) {
-  if (box.isEmpty) return
+  const packId = Number(packEl.dataset.packId)
+  const packData = findStandPack(packId)
+  if (box.isEmpty || pendingPackId !== null || !packData || packData.state !== 'available') return
+
+  // 팩을 누른 즉시 예약 처리한다. 개봉 전 취소하면 되돌리지만, 절취선을 끝까지 열면
+  // 매대에 딤 상태로 남아 같은 팩을 다시 고를 수 없게 된다.
+  pendingPackId = packId
+  packData.state = 'pending'
+  packEl.classList.add('is-dimmed', 'is-pending')
 
   // 카드팩 선택 시, 확대되어 매대 앞으로 나오는 연출 (선택 피드백)
   await animate(packEl, { scale: [1, 1.3], y: [0, -12] }, { duration: 0.22, easing: 'ease-out' }).finished
   animate(packEl, { scale: 1, y: 0 }, { duration: 0.18 })
 
-  openUnboxStage(selectedCount, packEl.dataset.img)
+  openUnboxStage(selectedCount, packEl.dataset.img, {
+    onCancel: () => {
+      const selectedPack = findStandPack(packId)
+      if (!selectedPack || selectedPack.state !== 'pending') return
+      selectedPack.state = 'available'
+      pendingPackId = null
+      renderStand()
+      updateReloadButton()
+    },
+    onOpened: () => {
+      const selectedPack = findStandPack(packId)
+      if (!selectedPack || selectedPack.state !== 'pending') return
+      selectedPack.state = 'dimmed'
+      pendingPackId = null
+      updateReloadButton()
+    },
+  })
 }
 
-function openUnboxStage(count, packImg) {
+function openUnboxStage(count, packImg, callbacks) {
   const overlay = document.createElement('div')
   overlay.className = 'overlay unbox-overlay'
   overlay.innerHTML = `
@@ -232,10 +300,10 @@ function openUnboxStage(count, packImg) {
     <div class="result-summary" id="result-summary"></div>
   `
   document.body.appendChild(overlay)
-  setupSlice(overlay, count)
+  setupSlice(overlay, count, callbacks)
 }
 
-function setupSlice(overlay, count) {
+function setupSlice(overlay, count, { onCancel, onOpened } = {}) {
   const track = overlay.querySelector('#perf-track')
   const title = overlay.querySelector('.overlay-title')
   const cancelBtn = overlay.querySelector('#cancel-unbox-btn')
@@ -278,10 +346,14 @@ function setupSlice(overlay, count) {
   track.addEventListener('pointercancel', onPointerUp)
 
   cancelBtn.addEventListener('click', () => {
-    if (!opened) overlay.remove()
+    if (!opened) {
+      onCancel?.()
+      overlay.remove()
+    }
   })
 
   async function openPack() {
+    onOpened?.()
     cancelBtn.style.display = 'none'
     title.textContent = '카드팩이 열리는 중...'
     const packTop = overlay.querySelector('#unbox-pack-top')
@@ -318,13 +390,38 @@ function cardActionForCount(count) {
   return count === 1 ? cardAction1 : cardAction2
 }
 
+// 1등/2등/LAST만 희귀 등급으로 취급한다.
+function isRareGrade(grade) {
+  return ['1등', '2등', 'LAST'].includes(grade)
+}
+
+// card_action2에서 희귀 카드가 공개되는 순간에만 강화 글로우를 켠다.
+// 3등/4등은 전체 결과 화면이 될 때까지 무발광을 유지한다.
+function revealGlow(slot) {
+  if (!isRareGrade(slot.dataset.grade)) return
+  slot.querySelector('.card-glow').classList.add('is-on', 'is-rare')
+}
+
+// card_action2의 희귀 카드만 더 천천히, 스케일감 있게 뒤집혀 임팩트를 준다.
+const RARE_FLIP_DURATION = 0.85
+
+function stackFlipTiming(grade) {
+  const rare = isRareGrade(grade)
+  return {
+    keyframes: rare ? { rotateY: [0, 180], scale: [1, 1.15, 1] } : { rotateY: [0, 180] },
+    options: { duration: rare ? RARE_FLIP_DURATION : 0.32, easing: rare ? 'ease-in-out' : 'ease-out' },
+  }
+}
+
 // 뽑기 결과 확정 시(카드 다 확인 후) 공통으로 쓰이는 마무리 처리 -
-// 제목/버튼/결과 요약 노출. card_action1, card_action2 둘 다 여기서 마무리한다.
+// 제목/버튼/결과 요약 노출 + 모든 카드에 기본 글로우를 켜서 "전리품 진열" 느낌을 준다.
+// card_action1, card_action2 둘 다 여기서 마무리한다.
 function finishReveal(overlay, results) {
   const title = overlay.querySelector('.overlay-title')
   const revealAllBtn = overlay.querySelector('#reveal-all-btn')
   title.textContent = '뽑기 결과'
   revealAllBtn.style.display = 'none'
+  overlay.querySelectorAll('.card-glow').forEach((glow) => glow.classList.add('is-on'))
   overlay.querySelector('#overlay-actions').style.display = 'flex'
   overlay.querySelector('#result-summary').textContent = results
     .map((p) => `[${p.grade}] ${p.name}`)
@@ -386,11 +483,11 @@ function cardAction1(overlay, results) {
 }
 
 // card_action2: 뽑은 카드 전부가 한 장 밑에 다음 장이 겹쳐진 "스택" 상태로 등장한다.
-// 맨 위 첫 장만 뒷면(미스터리)이고, 그 아래 깔린 카드들은 이미 앞면이 공개된 채로
-// 숨어있다 - 그래서 첫 장을 위로 슬라이스해서 넘기는 순간 다음 카드 결과가 바로
-// 짠 하고 드러나는 "쪼는 맛"이 나고, 이후 카드들은 넘길 때마다 바로바로 다음
-// 결과가 튀어나온다. 스택을 다 넘기고 나면 전체 카드가 한 번에(흩뿌려진 배치로)
-// 노출된다. (5/10뽑기처럼 장수가 많을 때 쓰기 좋은 연출)
+// 전부 뒷면(미스터리) 상태로 시작하고, 뒤로 갈수록 조금씩 삐져나와 보이게 쌓인다.
+// 카드를 위로 슬라이스해서 넘기는 그 순간에만 해당 카드가 뒷면 → 앞면으로 뒤집히며
+// 결과가 공개된다 - 아직 넘기지 않은 카드는 삐져나온 부분까지도 전부 뒷면이라
+// 등급 색이 미리 새어나오지 않는다. 스택을 다 넘기고 나면 전체 카드가 한 번에
+// (흩뿌려진 배치로) 노출된다. (5/10뽑기처럼 장수가 많을 때 쓰기 좋은 연출)
 function cardAction2(overlay, results) {
   const tray = overlay.querySelector('#reveal-tray')
   const title = overlay.querySelector('.overlay-title')
@@ -398,18 +495,16 @@ function cardAction2(overlay, results) {
 
   tray.classList.add('is-stack')
 
-  // cardEls[0]이 스택 맨 위(제일 먼저 넘길 카드) - 얘만 뒷면 상태로 시작하고,
-  // 나머지(i>=1)는 card-flip을 처음부터 180도 돌려놔서 앞면(결과)이 이미 노출된
-  // 채로 스택 안에 숨어있게 한다. 뒤로 갈수록 조금씩 삐져나와 보이게 쌓는다.
   const cardEls = results.map((prize, i) => {
     const slot = document.createElement('div')
     slot.className = 'card-slot stack-card'
+    slot.dataset.grade = prize.grade
     slot.style.zIndex = String(results.length - i)
     slot.style.setProperty('--stack-offset', `${i * 4}px`)
     slot.style.setProperty('--stack-scale', String(1 - i * 0.015))
     slot.innerHTML = `
-      <div class="card-glow is-on" style="background: radial-gradient(circle, ${prize.glow} 0%, transparent 70%)"></div>
-      <div class="card-flip"${i === 0 ? '' : ' style="transform: rotateY(180deg)"'}>
+      <div class="card-glow" style="background: radial-gradient(circle, ${prize.glow} 0%, transparent 70%)"></div>
+      <div class="card-flip">
         <div class="card-face card-back">✦</div>
         <div class="card-face card-front" style="color:${prize.glow}; background:linear-gradient(160deg, ${prize.glow}45, var(--panel-2) 65%)">
           <div class="grade">${prize.grade}</div>
@@ -429,19 +524,30 @@ function cardAction2(overlay, results) {
     title.textContent = `카드를 위로 밀어서 확인하세요 (${cursor}/${results.length})`
   }
 
-  function dismiss(slot, idx) {
-    if (idx === 0) {
-      // 첫 장만 이 시점에 뒷면 → 앞면으로 뒤집으며 첫 결과를 공개한다
-      animate(slot.querySelector('.card-flip'), { rotateY: [0, 180] }, { duration: 0.28, easing: 'ease-out' })
-    }
-    slot.style.transform = `translate(-50%, -160px) scale(var(--stack-scale))`
-    slot.style.opacity = '0'
+  function dismiss(slot) {
+    // 모든 카드가 넘겨지는 이 순간에 비로소 뒷면 → 앞면으로 뒤집히며 결과가 공개된다
+    // (그 전까지는 스택 속에서 삐져나온 부분까지도 전부 뒷면 상태라 등급이 새어나오지 않는다)
     cursor += 1
     updateTitle()
-    setTimeout(() => {
-      slot.style.display = 'none'
-      if (cursor >= results.length) finishStack()
-    }, 250)
+
+    // 카드가 살짝 들어오며 뒤집힌다. 일반 등급은 빠르게 넘기고,
+    // 희귀 등급만 더 길게 머물며 강화 글로우를 보여 준다.
+    slot.style.transform = `translate(-50%, calc(var(--stack-offset) - 36px)) scale(var(--stack-scale))`
+    const rare = isRareGrade(slot.dataset.grade)
+    const { keyframes, options } = stackFlipTiming(slot.dataset.grade)
+    const flipped = animate(slot.querySelector('.card-flip'), keyframes, options).finished
+    revealGlow(slot)
+
+    flipped.then(() => {
+      // 일반 카드는 리듬을 유지하도록 곧바로 넘기고, 희귀 카드만 읽을 시간을 준다.
+      setTimeout(() => {
+        slot.style.transform = `translate(-50%, -520px) scale(var(--stack-scale))`
+        setTimeout(() => {
+          slot.style.display = 'none'
+          if (cursor >= results.length) finishStack()
+        }, 280)
+      }, rare ? 550 : 80)
+    })
   }
 
   function finishStack() {
@@ -478,12 +584,11 @@ function cardAction2(overlay, results) {
   function onPointerUp(e) {
     if (!dragging) return
     dragging = false
-    const idx = cursor
-    const slot = cardEls[idx]
+    const slot = cardEls[cursor]
     slot.style.transition = ''
     const dy = Math.min(0, e.clientY - startY)
     if (-dy >= SWIPE_DISMISS_DY) {
-      dismiss(slot, idx)
+      dismiss(slot)
     } else {
       slot.style.transform = '' // 임계값 전에 놓으면 스택 제자리로 스냅백
     }
